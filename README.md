@@ -1,5 +1,5 @@
 - 👋 Hi, I’m @Jojo970, I am an aspiring Data Scientist who has decided to take the route of becoming a data analyst first to becom emore situated with data!
-- 
+
 Ever since, I have been making tons of projects on the things I'm interested in...
 - 👀 I’m interested in Python, Blockchains, data science and using all of the above for trading more efficiently!
 - 🌱 I’m currently learning Solidity, and having too much fun on that
