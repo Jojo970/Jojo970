@@ -1,4 +1,4 @@
-- 👋 Hi, I’m @Jojo970, I am an aspiring Data Scientist who has decided to take the route of becoming a data analyst first to becom emore situated with data!
+- 👋 Hi, I’m @Jojo970, I am an aspiring Data Scientist who has decided to take the route of becoming a data analyst first. I have a passion for data driven decisions and would love to contribute to your data projects!
 
 Ever since, I have been making tons of projects on the things I'm interested in...
 - 👀 I’m interested in Python, Blockchains, data science and using all of the above for trading more efficiently!
