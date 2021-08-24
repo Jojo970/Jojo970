@@ -1,5 +1,4 @@
-#Name: Rob Bulman
-#Submission Date: July 2nd 
+
 
 import numpy # to run pandas
 import pandas as pd # to open csv file and perform data analysis
