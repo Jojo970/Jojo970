@@ -1,0 +1,293 @@
+import time, pytz
+from datetime import datetime
+from decimal import Decimal
+import numpy as np
+import twitter
+from binance.client import Client
+from binance.websockets import BinanceSocketManager
+
+twitterapi = twitter.Api(consumer_key='INSERT CONSUMER KEY',
+                  consumer_secret='INSERT CONSUMER SECRET KEY',
+                  access_token_key='INSERT ACCESS TOKEN KEY',
+                  access_token_secret='INSERT ACCESS SECRET KEY')
+
+class Process: # READ MESSAGES FROM THE LIVE DATA SOCKET
+    
+    def process_message(self, msg):
+        # print("message type: {}".format(msg['e']))
+        self.msg = msg
+        if self.msg['k']['x'] == True:
+            self.lasthighs.append(float(self.msg['k']['h']))
+            self.lastlows.append(float(self.msg['k']['l']))
+            self.lastcloses.append(float(self.msg['k']['c']))
+    
+    def process_mark(self, markmsg):
+        self.mark = markmsg
+        self.markprice = float(self.mark['data']['p'])
+
+        self.lst_of_price[0] = self.markprice
+        
+        
+            
+class GetBinanceClient(Process):
+
+    def __init__(self, api_key, api_secret):
+        self.lsthighs = []
+        self.lstlows = []
+        self.lstcloses = []
+        self.lst_of_price = [0]
+
+        self.orderplaced = False
+        self.inshrtposition = False
+        self.inlngposition = False
+        self.inposition = False
+
+        self.api_key = api_key
+        self.api_secret = api_secret
+
+
+
+    def b_getclient(self): # CREATES WEBSOCKET
+        self.client = Client(self.api_key, self.api_secret)
+        self.bm = BinanceSocketManager(self.client)
+
+    def b_getdata(self): # STARTS DATAFEED
+        self.bm.start_kline_socket(binance_coin, super().process_message, interval = Client.KLINE_INTERVAL_4HOUR)
+        self.bm.start_symbol_mark_price_socket(binance_coin, super().process_mark, fast = False)
+        self.bm.start()   
+
+    def b_get_market_price(self): # READS LIVE PRICE DATA TO MAKE SPLIT SECOND DECISIONS
+        self.market_price = self.lst_of_price[0]
+        return self.market_price
+
+    def b_getpastdata(self): # GETS PAST KLINES TO USE FOR INITIAL DATA
+        self.candles = self.client.futures_klines(symbol=binance_coin, interval = Client.KLINE_INTERVAL_4HOUR)
+        for data in self.candles:
+            highs = float(data[2])
+            lows = float(data[3])
+            closes = float(data[4])
+
+            self.lsthighs.append(highs)
+            self.lstlows.append(lows)
+            self.lstcloses.append(closes)
+        
+        self.lsthighs.pop(-1)
+        self.lstlows.pop(-1)
+        self.lstcloses.pop(-1)
+
+        self.lastcloses = self.lstcloses[-50:]
+        self.lasthighs = self.lsthighs[-50:]
+        self.lastlows = self.lstlows[-50:]
+        
+        del self.lstcloses
+        del self.lsthighs
+        del self.lstlows
+           
+    def b_get_rsi_stoch(self):
+
+        self.np_closes = np.array(self.lastcloses[-50:])
+        self.np_highs = np.array(self.lasthighs[-50:])
+        self.np_lows = np.array(self.lastlows[-50:])
+
+        self.b_slowk, self.b_slowd = talib.STOCH(self.np_highs, self.np_lows, self.np_closes, 8, 3, 0, 3, 0)
+        self.b_rsi = talib.RSI(self.np_closes, 14)
+        self.b_realslowk = round(self.b_slowk[-1], 2)
+        self.b_realrsi = round(self.b_rsi[-1], 2)
+        # UNCOMMENT THESE IF YOU WANT RSI + STOCH PRINTED 
+        # print('BINANCE DATASET FOR:', binance_coin)
+        # print('%K:',self.b_realslowk)
+        # print('%D:',self.b_realslowd)
+        # print('RSI:',self.b_realrsi)
+
+        return self.b_realslowk, self.b_realrsi
+
+    def b_long_signal(self): 
+        self.client = Client(self.api_key, self.api_secret) # IF NOT IN ORDER THIS PROTOCAL IS ACTIVATED
+        self.USDT_balance = self.client.futures_account_balance() # CHECK BALANCE
+        self.funds = float(self.USDT_balance[0]['balance'])
+        self.funds_to_trade = self.funds # USING 50% OF THE BALANCE
+        self.current_price = self.client.futures_symbol_ticker(symbol= binance_coin) #CHECK CURRENT PRICE
+        self.price = float(self.current_price['price'])
+        self.stop_price = round(self.price + 0.5, 2)
+        self.pquantity = (self.funds_to_trade / self.price) / 4 # CALCULATE TRADE QUANTITY
+        self.number = Decimal(self.pquantity)
+        self.quantity = round(self.number, 3)
+        print('SIGNAL SAYS LONG FOR', binance_coin, 'ON KLINE_INTERVAL_4HOUR CANDLE!!!')
+        self.client.futures_create_order(symbol = binance_coin, side = 'BUY', position_side = 'LONG', 
+        type = 'STOP_MARKET', quantity = self.quantity, stopPrice = self.stop_price) # CREATE THE ORDER
+        print('ORDER CREATED')
+        self.orderplaced = True
+        
+        return self.orderplaced
+                
+    def b_short_signal(self):
+        self.client = Client(self.api_key, self.api_secret)
+        self.USDT_balance = self.client.futures_account_balance()
+        self.funds = float(self.USDT_balance[0]['balance'])
+        self.funds_to_trade = self.funds
+        self.current_price = self.client.futures_symbol_ticker(symbol= binance_coin)
+        self.price = float(self.current_price['price'])
+        self.stop_price = round(self.price - 0.5, 2)
+        self.pquantity = (self.funds_to_trade / self.price)/4
+        self.number = Decimal(self.pquantity)
+        self.quantity = round(self.number, 3)
+        print('SIGNAL SAYS SHORT FOR', binance_coin, 'ON KLINE_INTERVAL_4HOUR CANDLE!!!')
+        self.client.futures_create_order(symbol = binance_coin, side = 'BUY', position_side = 'SHORT', type = 'STOP_MARKET', quantity = self.quantity, stopPrice = self.stop_price)
+        print('ORDER CREATED')
+        self.orderplaced = True
+
+        return self.orderplaced
+        
+    def b_long_sell(self):
+        self.client.futures_create_order(symbol = binance_coin, side = 'SELL', position_side = 'LONG', 
+        type = 'STOP_MARKET', closePosition = True)
+
+    def b_short_sell(self):
+        self.client.futures_create_order(symbol = binance_coin, side = 'BUY', position_side = 'SHORT', type = 'STOP_MARKET', closePosition = True)
+
+    def b_order(self): # FUNCTION TO CHECK IF IN POSITION
+        try:
+            self.client = Client(self.api_key, self.api_secret)
+            self.client.futures_get_open_orders() # IF NOT IN POSITION THIS LINE FAILS AND LOOP GOES TO EXCEPT LINE
+                # SETS SELF.INPOSITION TO TRUE TO SAY THAT WE ARE IN POSITION
+        except:
+            # print('NO ORDERS OPEN')
+            self.orderplaced = False
+
+        return self.orderplaced
+
+    def b_position(self):
+        self.client = Client(self.api_key, self.api_secret)
+        self.positioninfo = self.client.futures_position_information(symbol = binance_coin)
+
+        self.lng_entry_price = float(self.positioninfo[1]['entryPrice'])
+        self.shrt_entry_price = float(self.positioninfo[2]['entryPrice'])
+        
+        self.lngposition_side = self.positioninfo[1]['positionSide']
+        self.shrtposition_side = self.positioninfo[2]['positionSide']
+
+
+        if self.lng_entry_price > 1:
+            self.inlngposition = True
+            self.inshrtposition = False
+
+        elif self.shrt_entry_price > 1:
+            self.inlngposition = False
+            self.inshrtposition = True
+
+        else:
+            self.inlngposition = False
+            self.inshrtposition = False
+
+
+        return self.lng_entry_price, self.shrt_entry_price, self.inlngposition, self.inshrtposition
+
+#START OF THE CALLED FUNCTIONS AKA THE BOT IS WORKING HERE
+
+binance_coin = 'INSERT TRADING PAIR'
+api_key_in = 'INSERT API KEY'
+api_secret_in = 'INSERT API SECRET KEY'
+
+binance = GetBinanceClient(api_key_in,
+ api_secret_in)
+
+sidelng = False
+sideshrt = False
+orderplaced = False
+order_in_place = False
+
+utc = pytz.timezone('UTC')
+lngcall = 0
+shrtcall = 0
+
+binance.b_getclient()
+binance.b_getpastdata()
+binance.b_getdata()
+print("CONNECTION SUCCESSFUL")
+
+# Activation Protocol here so that STRATEGY PARAMETERS only calculate when there is significant change in data, saving space
+while True:
+    markprice = binance.b_get_market_price()
+    
+
+    parameter_1, parameter_2 = binance.b_get_parameters()
+
+    if sidelng == False and sideshrt == False and orderplaced == False:
+        if "INSERT SHORT PARAMETERS HERE":
+            print('RSI:', rsi)
+            print('STOCH:', stochk)
+            orderplaced = binance.b_short_signal()
+            print('PLACED ORDER')
+
+
+        elif "INSERT LONG PARAMETERS HERE":
+            print('RSI:', rsi)
+            print('STOCH:', stochk)
+            orderplaced = binance.b_long_signal()
+            print('PLACED ORDER')
+
+    else: pass # IF IN TRADE, PASS
+    if orderplaced == True:
+        orderplaced = binance.b_order()
+        if orderplaced == False:
+            order_in_place = True
+
+    if order_in_place == True:
+        lng_entry, shrt_entry, sidelng, sideshrt = binance.b_position()
+        if lng_entry > 1 or shrt_entry > 1:
+            order_in_place = False
+        
+#SELL PARAMETERS WITH TRAILING STOP
+    if sidelng == True:
+        if lngcall > (markprice - (markprice * 0.01)):
+            pass
+        else:
+            if markprice > lng_entry:
+                lngcall = markprice - (markprice * 0.01)
+                
+            elif lng_entry > markprice:
+                lngcall = lng_entry - (lng_entry * 0.01)
+                
+        
+        if markprice <= lngcall:
+            binance.b_long_sell() # SEND SIGNAL TO SELL TO BINANCE EXCHANGE
+            
+            # RECORD DATA TO SEND TO TWITTER
+            now = datetime.now(utc)
+            selltime = now.strftime("%d/%m/%Y %H:%M:%S")
+            lngpnl = str(round((((markprice - lng_entry) / lng_entry) * 100), 2))
+            
+            #MAKE TWITTER POST
+            lngpost = 'LONG TRADE EXECUTED AT: ' + str(round(lng_entry, 2)) + '\n' + "UTC TIME: " + buytime + '\n' + '\n' + 'POSITION CLOSED AT: ' + str(round(markprice, 2)) + '\n' + 'UTC TIME:' + selltime + '\n' + 'PNL %:' + lngpnl + '\n' + '$LTC $BTC #cryptocurrency'
+            twitterapi.PostUpdate(lngpost)
+
+    elif sideshrt == True:
+        if shrtcall > (markprice + (markprice * 0.01)):
+            pass
+        else:
+            if markprice < shrt_entry:
+                shrtcall = markprice + (markprice * 0.01)
+                
+            elif shrt_entry < markprice:
+                shrtcall = shrt_entry + (shrt_entry * 0.01)
+                
+
+        if markprice >= shrtcall:
+            binance.b_short_sell()
+            
+            # RECORD DATA TO SEND TO TWITTER
+            now = datetime.now(utc)
+            selltime = now.strftime("%d/%m/%Y %H:%M:%S")
+            shrtpnl = str(round((((markprice - shrt_entry) / shrt_entry) * -100), 2))
+            
+            #MAKE TWITTER POST
+            shortpost = 'SHORT TRADE EXECUTED AT: '+ str(round(shrt_entry, 2)) + '\n' + "UTC TIME: " + buytime + '\n' + '\n' + 'POSITION CLOSED AT: ' + str(round(markprice, 2)) + '\n' + 'UTC TIME: ' + selltime + '\n' + 'PNL %: ' + shrtpnl + '\n' + '$LTC $BTC #cryptocurrency'
+            twitterapi.PostUpdate(shortpost)
+            print('CLOSED POSITION')
+
+    else: pass
+
+
+
+    time.sleep(5)
+
