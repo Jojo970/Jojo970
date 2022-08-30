@@ -1,4 +1,4 @@
-- 👋 Hi, I’m @Jojo970, I am an aspiring Data Scientist who has decided to take the route of becoming a data analyst first. I have a passion for data driven decisions and would love to contribute to your data projects!
+- 👋 Hi, my name is Jong Lee. I am a Full Stack Developer seeking full time employement at the moment. I started my coding journey in 2021 with Python and decided to expand my skillset to the MERN stack in 2022!
 
 Ever since, I have been making tons of projects on the things I'm interested in...
 - 👀 I’m interested in Python, Blockchains, data science and using all of the above for trading more efficiently!
