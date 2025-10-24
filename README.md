@@ -3,7 +3,6 @@
 Ever since, I have been making tons of projects on the things I'm interested in...
 - 👀 I’m interested in Python, Blockchains, data science and using all of the above for trading more efficiently!
 - 👀 I love creating visualy pleasing UIs and working on minimalistic themes.
-- 🌱 I may have an obsession with light/dark theme buttons.
 - 🌱 I’m currently working to learn Rust and more about React.
 
 <!---
